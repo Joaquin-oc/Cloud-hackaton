@@ -96,7 +96,7 @@ Crear un usuario en [https://www.serverless.com/](https://www.serverless.com/) c
 ```bash
 cd /home/ubuntu/
 git clone https://github.com/Joaquin-oc/Hackaton-Cloud.git
-cd Hackaton-Cloud/lambdas
+cd Hackaton-Cloud/Backend
 ```
 
 Estructura del proyecto:
