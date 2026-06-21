@@ -164,13 +164,13 @@ endpoints:
 cd frontend
 npm install
 ```
-
-2. Crear la carpeta dist, el contenido que subes al bucket s3 y que referencia Amplify.
+3. Configurar las variables de entorno .env. 
+4. Crear la carpeta dist, el contenido que subes al bucket s3 y que referencia Amplify.
 ```bash
 npm run build
 ```
 
-3. Desde Amplify, configurar:
+5. Desde Amplify, configurar:
 <img width="1426" height="488" alt="Captura de pantalla 2026-06-20 a la(s) 6 56 46 p  m" src="https://github.com/user-attachments/assets/6e25e18f-37b7-4ba2-a808-24e08eeba25c" />
 
 y luego seleccionar método Amazon s3 
