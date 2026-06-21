@@ -1,0 +1,172 @@
+org: joaquinocana
+service: api-ofertas
+
+provider:
+  name: aws
+  runtime: python3.12
+  memorySize: 1024
+  timeout: 30
+  iam:
+    role: arn:aws:iam::728115922510:role/LabRole
+  environment:
+    TABLE_USUARIOS: ${sls:stage}-usuarios
+    TABLE_SESIONES: ${sls:stage}-sesiones
+    TABLE_RESULTADOS: ${sls:stage}-resultados_ofertas
+    SQS_URL: !Ref OfertasQueue
+    GROQ_API_KEY: ${env:GROQ_API_KEY}
+
+package:
+  individually: true
+  patterns:
+    - '!**'
+
+functions:
+
+  # -------- AUTH --------
+  registro:
+    handler: registro.lambda_handler
+    package:
+      patterns:
+        - 'registro.py'
+    events:
+      - http:
+          path: /usuario/registro
+          method: post
+          cors: true
+      - http:
+          path: /usuario/perfil
+          method: put
+          cors: true
+  login:
+    handler: login.lambda_handler
+    package:
+      patterns:
+        - 'login.py'
+    events:
+      - http:
+          path: /usuario/login
+          method: post
+          cors: true
+
+  validarSesion:
+    handler: ValidarSesion.lambda_handler
+    package:
+      patterns:
+        - 'ValidarSesion.py'
+    events:
+      - http:
+          path: /usuario/validar
+          method: get
+          cors: true
+
+  rescatarDlq:
+    handler: Redirigir.handler
+    timeout: 120
+    environment:
+      SQS_URL: !Ref OfertasQueue
+      DLQ_URL: !Ref OfertasDLQ
+    package:
+      patterns:
+        - 'Redirigir.py'
+    events:
+      - http:
+          path: /admin/rescatar-dlq
+          method: post
+          cors: true
+      - schedule:
+          rate: rate(5 minutes)   
+          enabled: true
+
+  # -------- FLUJO DE OFERTAS --------
+  ingestor:
+    handler: lambda1.lambda_handler
+    package:
+      patterns:
+        - 'lambda1.py'
+    events:
+      - http:
+          path: /oferta/procesar
+          method: post
+          cors: true
+
+  procesador:
+    handler: lambda2.lambda_handler
+    timeout: 60
+    package:
+      patterns:
+        - 'lambda2.py'
+    events:
+      - sqs:
+          arn: !GetAtt OfertasQueue.Arn
+          batchSize: 1
+
+  getResultados:
+    handler: polling.lambda_handler
+    package:
+      patterns:
+        - 'polling.py'
+    events:
+      - http:
+          path: /oferta/resultados
+          method: get
+          cors: true
+
+resources:
+  Resources:
+
+    # ---------- DYNAMODB ----------
+    TablaUsuarios:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.TABLE_USUARIOS}
+        AttributeDefinitions:
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: email
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+
+    TablaSesiones:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.TABLE_SESIONES}
+        AttributeDefinitions:
+          - AttributeName: token
+            AttributeType: S
+        KeySchema:
+          - AttributeName: token
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+
+    TablaResultados:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.TABLE_RESULTADOS}
+        AttributeDefinitions:
+          - AttributeName: sesion_id
+            AttributeType: S
+          - AttributeName: oferta_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: sesion_id
+            KeyType: HASH
+          - AttributeName: oferta_id
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
+
+    # ---------- SQS ----------
+    OfertasDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${sls:stage}-ofertas-dlq
+        MessageRetentionPeriod: 1209600
+
+    OfertasQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${sls:stage}-ofertas-queue
+        VisibilityTimeout: 70  
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt OfertasDLQ.Arn
+          maxReceiveCount: 3
